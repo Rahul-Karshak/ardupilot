@@ -793,7 +793,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
                               (alt, home_distance, home))
 
             # our post-condition is that we are disarmed:
-            if not self.armed():
+            if not self.armed(cached=True):
                 if home == "":
                     raise NotAchievedException("Did not get home")
                 # success!
@@ -2919,6 +2919,11 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         self.mav.mav.command_ack_send(0, 1)
         self.wait_statustext("Calibration successful")
 
+        # we don't anchor the vehicle when we do this test.  If we
+        # don't reboot then we end up smacking into the ground in the
+        # next test...
+        self.reboot_sitl()
+
     def MagFail(self):
         '''test failover of compass in EKF'''
         # we want both EK2 and EK3
@@ -4626,15 +4631,29 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         self.change_mode('AUTO')
         self.set_rc(3, 1600)
         self.wait_altitude(19, 25, relative=True)
-        self.wait_groundspeed(wpnav_speed_ms-tolerance, wpnav_speed_ms+tolerance)
-        self.monitor_groundspeed(wpnav_speed_ms, timeout=20)
+        self.wait_groundspeed(
+            wpnav_speed_ms-tolerance,
+            wpnav_speed_ms+tolerance,
+            minimum_duration=20,
+            timeout=30,
+        )
         self.change_mode('RTL')
-        self.wait_groundspeed(rtl_speed_ms-tolerance, rtl_speed_ms+tolerance)
-        self.monitor_groundspeed(rtl_speed_ms, timeout=5)
+        self.wait_groundspeed(
+            rtl_speed_ms-tolerance,
+            rtl_speed_ms+tolerance,
+            minimum_duration=5,
+        )
         self.change_mode('AUTO')
-        self.wait_groundspeed(0-tolerance, 0+tolerance)
-        self.wait_groundspeed(wpnav_speed_ms-tolerance, wpnav_speed_ms+tolerance)
-        self.monitor_groundspeed(wpnav_speed_ms, tolerance=0.6, timeout=5)
+        # we are returning on the same path, so should see a zero velocity:
+        self.wait_groundspeed(
+            0-tolerance,
+            0+tolerance,
+        )
+        self.wait_groundspeed(
+            wpnav_speed_ms-tolerance,
+            wpnav_speed_ms+tolerance,
+            minimum_duration=5,
+        )
         self.do_RTL()
 
     def NavDelay(self):
@@ -4894,10 +4913,9 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
             while True:
                 if self.get_sim_time() - tstart > 200:
                     raise NotAchievedException("Did not reach lower point")
-                m = self.assert_receive_message('GLOBAL_POSITION_INT')
-                x = mavutil.location(m.lat/1e7, m.lon/1e7, m.alt/1e3, 0)
+                x = self.get_mav_location()
                 dist = self.get_distance(x, lower_surface_pos)
-                delta = (orig_absolute_alt_mm - m.alt)/1000.0
+                delta = orig_absolute_alt_mm/1000.0 - x.alt
 
                 self.progress("Distance: %fm abs-alt-delta: %fm" %
                               (dist, delta))
@@ -5852,7 +5870,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
             else:
                 # rotate delta_ef from NED to Local FRD
                 rotmat_yaw = Matrix3()
-                rotmat_yaw.rotate_yaw(self.mav.messages["ATTITUDE"].yaw)
+                rotmat_yaw.rotate_yaw(-self.mav.messages["ATTITUDE"].yaw) # negative yaw for earth->body
                 delta_local_frd = rotmat_yaw * delta_ef
                 angle_x = math.atan2(delta_local_frd.y, delta_local_frd.z)
                 angle_y = -math.atan2(delta_local_frd.x, delta_local_frd.z)
@@ -8241,7 +8259,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         """ensure vehicle stays put until it is ready to fly"""
         self.context_push()
 
-        self.set_parameter("PILOT_TKOFF_ALT", 700)
+        self.set_parameter("PILOT_TKO_ALT_M", 7.0)
         self.change_mode('POSHOLD')
         self.set_rc(3, 1000)
         self.wait_ready_to_arm()
@@ -9247,9 +9265,6 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         original_elec_m = self.wait_message_field_values('BATTERY_STATUS', {
             "charge_state": mavutil.mavlink.MAV_BATTERY_CHARGE_STATE_OK
         }, instance=elec_battery_instance)
-        original_fuel_m = self.wait_message_field_values('BATTERY_STATUS', {
-            "charge_state": mavutil.mavlink.MAV_BATTERY_CHARGE_STATE_OK
-        }, instance=fuel_battery_instance)
 
         if original_elec_m.battery_remaining < 90:
             raise NotAchievedException("Bad original percentage")
@@ -9262,12 +9277,15 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         self.start_subsubtest("Protocol %i: Checking original voltage (fuel)" % proto_ver)
         # ArduPilot spits out essentially uninitialised battery
         # messages until we read things from the battery:
+        original_fuel_m = self.wait_message_field_values('BATTERY_STATUS', {
+            "charge_state": mavutil.mavlink.MAV_BATTERY_CHARGE_STATE_OK
+        }, instance=fuel_battery_instance)
         if original_fuel_m.battery_remaining <= 90:
             raise NotAchievedException("Bad original percentage (want=>%f got %f" % (90, original_fuel_m.battery_remaining))
         self.start_subsubtest("Protocol %i: Ensure percentage is counting down" % proto_ver)
         self.wait_message_field_values('BATTERY_STATUS', {
-            "battery_remaining": original_fuel_m.battery_remaining - 1,
-        }, instance=fuel_battery_instance)
+            "battery_remaining": original_fuel_m.battery_remaining - 2,
+        }, instance=fuel_battery_instance, timeout=30)
 
         self.wait_ready_to_arm()
         self.arm_vehicle()
@@ -10588,6 +10606,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
             ("ainsteinlrd1", 42),
             ("rds02uf", 43),
             ("lightware_grf", 45),
+            ("dts6012m", 47),
         ]
         # you can use terrain - if you don't the vehicle just uses a
         # plane based on home.
@@ -14437,6 +14456,7 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
             #                                      N   E  U
             (mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,   0, 0, 10),
             (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 20, 0, 10),
+            self.create_MISSION_ITEM_INT(mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, p1=1),
             (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 40, 0, 10),
             (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 120, 0, 10),
         ])
