@@ -73,8 +73,8 @@ The KARSHAKH743VTOL does not have a built-in compass, but you can attach an exte
 The KARSHAKH743VTOL has 2(+1) analog inputs.
 
 - ADC1 -> Battery Voltage (internal sensor)
-- ADC2 -> Battery Current Sensor (external sensor)
-- ADC3 -> RSSI voltage monitoring (disabled)/AUXGPIO
+- ADC1 -> Battery Current Sensor (external sensor)
+- ADC1 -> RSSI voltage monitoring /AUXGPIO (disabled)
 
 ## GPIOs
 
