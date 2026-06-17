@@ -5,13 +5,62 @@
 #include "AP_AHRS_NavEKF2.h"
 #include <AP_AHRS/AP_AHRS.h>
 #include <AP_HAL/AP_HAL.h>
+#include <AP_Logger/AP_Logger.h>
 
 extern const AP_HAL::HAL& hal;
 
 NavEKF2 AP_AHRS_NavEKF2::EKF2;
 
+bool AP_AHRS_NavEKF2::start()
+{
+    const auto now_ms = AP_HAL::millis();
+
+    if (start_time_ms == 0) {
+        start_time_ms = now_ms;
+    }
+
+#if HAL_LOGGING_ENABLED
+    // if we're doing Replay logging then don't allow any data
+    // into the EKF yet.  Don't allow it to block us for long.
+    if (!hal.util->was_watchdog_reset()) {
+        if (now_ms - start_time_ms < 5000) {
+            if (!AP::logger().allow_start_ekf()) {
+                return false;
+            }
+        }
+    }
+#endif
+
+    // wait 1 second for DCM to output a valid tilt error estimate
+    // FIXME: work out whether this is still required!
+    if (now_ms - start_time_ms <= 1000) {
+        return false;
+    }
+
+    // try to start the filter:
+    return EKF2.InitialiseFilter();
+}
+
+void AP_AHRS_NavEKF2::update()
+{
+    if (!started) {
+        started = start();
+    }
+    if (!started) {
+        return;
+    }
+    EKF2.UpdateFilter();
+}
+
 void AP_AHRS_NavEKF2::get_results(AP_AHRS_Backend::Estimates &results)
 {
+    const auto now_ms = AP_HAL::millis();
+
+    // initialisation complete some time after ekf has started
+    results.initialised = (started && (now_ms - start_time_ms > 20000));
+
+    results.healthy = started && EKF2.healthy();
+
     const AP_InertialSensor &_ins = AP::ins();
 
     /*
@@ -91,6 +140,12 @@ void AP_AHRS_NavEKF2::get_results(AP_AHRS_Backend::Estimates &results)
     results.location_valid = EKF2.getLLH(results.location);
 
     results.hagl_valid = EKF2.getHAGL(results.hagl);
+
+    /*
+     * air data estimates
+     */
+    EKF2.getWind(results.wind);
+    results.wind_valid = true;
 
     /*
      * Sensor-related information
