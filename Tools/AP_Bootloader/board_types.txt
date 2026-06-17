@@ -435,6 +435,11 @@ AP_HW_AET-H743-Basic                 2024
 
 AP_HW_BOTWINGF405                    2501
 
+AP_HW_AET-H743-AIR                   2509
+AP_HW_AET-U7                         2510
+AP_HW_AET-AT405A                     2511
+AP_HW_AET-405-Mini                   2512
+
 AP_HW_SakuraRC-H743                  2714
 
 AP_HW_SkyRukh_Surge_H7               2815
@@ -607,6 +612,12 @@ AP_HW_SKYDROID-S3_ODID              11300
 AP_HW_CUBEORANGEPLUS_ODID           11063
 AP_HW_SIYI_N7_ODID                  11123
 AP_HW_SIYI-UniFC-6-PICO_ODID        11215
+
+AP_HW_AET-H743-AIR_ODID             12509
+AP_HW_AET-U7_ODID                   12510
+AP_HW_AET-AT405A_ODID               12511
+AP_HW_AET-405-Mini_ODID             12512
+
 
 # do not allocate board IDs above 10,000 for non-ODID boards.
 # do not allocate board IDs above 19,999 in this file.
