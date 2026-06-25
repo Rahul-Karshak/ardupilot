@@ -139,6 +139,9 @@ void AP_AHRS_NavEKF2::get_results(AP_AHRS_Backend::Estimates &results)
      */
     results.location_valid = EKF2.getLLH(results.location);
 
+    // origin-relative functions
+    results.provides_common_origin = true;
+
     results.hagl_valid = EKF2.getHAGL(results.hagl);
 
     /*
@@ -163,6 +166,14 @@ void AP_AHRS_NavEKF2::get_results(AP_AHRS_Backend::Estimates &results)
 
     // are we consuming yaw from a source which is *not* a compass
     results.using_noncompass_for_yaw = EKF2.isExtNavUsedForYaw();
+
+#if AP_AHRS_GET_MAG_DATA_ENABLED
+    // estimators can provide their predicted magnetic fields:
+    EKF2.getMagNED(results.mag_field_NED);
+    results.mag_field_NED_valid = true;
+    EKF2.getMagXYZ(results.mag_field_corrections);
+    results.mag_field_corrections_valid = true;
+#endif  // AP_AHRS_GET_MAG_DATA_ENABLED
 
     /*
      * filter status and estimates quality values:
